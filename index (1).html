@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Email Reply Assistant</title>
+<style>
+  /* ---------- Design tokens ---------- */
+  :root{
+    --ink-950: #0d1117;
+    --ink-900: #12181f;
+    --ink-800: #1a222c;
+    --ink-700: #232d38;
+    --ink-600: #303c48;
+    --paper: #e8ecf1;
+    --paper-dim: #9aa7b4;
+    --accent: #5eead4;      /* seal wax teal - the signature accent */
+    --accent-dim: #2f6f66;
+    --accent-soft: rgba(94,234,212,0.12);
+    --amber: #f2b880;       /* secondary accent for warnings/empty states */
+    --danger: #f2836b;
+    --radius: 10px;
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *{ box-sizing: border-box; }
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse at top right, rgba(94,234,212,0.06), transparent 55%),
+      var(--ink-950);
+    color: var(--paper);
+    font-family: var(--font-body);
+    padding: 40px 20px 60px;
+  }
+
+  /* ---------- Layout shell ---------- */
+  .wrap{
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  header.masthead{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap: 20px;
+    border-bottom: 1px solid var(--ink-700);
+    padding-bottom: 22px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+
+  .masthead-title{
+    font-family: var(--font-display);
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    line-height: 1.05;
+  }
+  .masthead-title .accent-dot{ color: var(--accent); }
+
+  .masthead-sub{
+    margin: 6px 0 0;
+    color: var(--paper-dim);
+    font-size: 14px;
+    max-width: 46ch;
+  }
+
+  .stamp{
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    background: var(--accent-soft);
+    padding: 6px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  /* ---------- Main grid: composer + reply ---------- */
+  .desk{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 800px){
+    .desk{ grid-template-columns: 1fr; }
+  }
+
+  .pane{
+    background: var(--ink-900);
+    border: 1px solid var(--ink-700);
+    border-radius: var(--radius);
+    padding: 20px;
+    display:flex;
+    flex-direction:column;
+    min-height: 380px;
+  }
+
+  .pane-label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--paper-dim);
+    margin-bottom: 14px;
+  }
+  .pane-label .idx{
+    color: var(--accent);
+  }
+
+  textarea{
+    flex:1;
+    width:100%;
+    resize: vertical;
+    min-height: 220px;
+    background: var(--ink-800);
+    border: 1px solid var(--ink-600);
+    border-radius: 8px;
+    color: var(--paper);
+    font-family: var(--font-body);
+    font-size: 14.5px;
+    line-height: 1.6;
+    padding: 14px;
+    outline: none;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  textarea:focus{
+    border-color: var(--accent-dim);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  textarea::placeholder{ color: #55636f; }
+
+  /* Tone selector - segmented control, styled like a wax-seal choice */
+  .tone-row{
+    display:flex;
+    gap:8px;
+    margin: 16px 0 4px;
+    flex-wrap: wrap;
+  }
+  .tone-btn{
+    flex:1;
+    min-width: 100px;
+    background: var(--ink-800);
+    border: 1px solid var(--ink-600);
+    color: var(--paper-dim);
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .tone-btn:hover{ border-color: var(--accent-dim); color: var(--paper); }
+  .tone-btn.active{
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .action-row{
+    display:flex;
+    gap:10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  button.primary, button.ghost{
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 12px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: transform .1s ease, filter .15s ease, background .15s ease;
+  }
+  button.primary{
+    background: var(--accent);
+    color: #08201c;
+    flex: 2;
+    min-width: 160px;
+  }
+  button.primary:hover{ filter: brightness(1.08); }
+  button.primary:active{ transform: translateY(1px); }
+
+  button.ghost{
+    background: transparent;
+    border: 1px solid var(--ink-600);
+    color: var(--paper-dim);
+    flex: 1;
+    min-width: 100px;
+  }
+  button.ghost:hover{ border-color: var(--danger); color: var(--danger); }
+
+  /* Output pane */
+  #outputBox{
+    flex:1;
+    min-height: 220px;
+    background: var(--ink-800);
+    border: 1px solid var(--ink-600);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 14.5px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-y:auto;
+    color: var(--paper);
+  }
+  #outputBox.empty{
+    color: var(--paper-dim);
+    font-style: italic;
+  }
+  #outputBox.warning{
+    color: var(--amber);
+    font-style: italic;
+  }
+
+  .output-actions{
+    display:flex;
+    gap:10px;
+    margin-top: 16px;
+  }
+
+  .copy-feedback{
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+    opacity: 0;
+    transition: opacity .2s ease;
+    align-self:center;
+  }
+  .copy-feedback.show{ opacity: 1; }
+
+  footer{
+    text-align:center;
+    color: var(--paper-dim);
+    font-size: 12px;
+    margin-top: 36px;
+    font-family: var(--font-mono);
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <h1 class="masthead-title">AI Email Reply Assistant<span class="accent-dot">.</span></h1>
+      <p class="masthead-sub">Paste an email, pick a tone, and get a reply drafted from its content — all in your browser, no server involved.</p>
+    </div>
+    <span class="stamp">Rule-Based Engine</span>
+  </header>
+
+  <div class="desk">
+
+    <!-- ===================== LEFT PANE: INPUT ===================== -->
+    <section class="pane">
+      <div class="pane-label"><span class="idx">01</span> Original Email</div>
+
+      <textarea id="emailInput" placeholder="Paste the email you received here...
+
+Example:
+Hi team, could we schedule a meeting next week to discuss the Q3 budget? Let me know your availability. Thanks!"></textarea>
+
+      <div class="tone-row">
+        <button class="tone-btn active" data-tone="Formal">Formal</button>
+        <button class="tone-btn" data-tone="Friendly">Friendly</button>
+        <button class="tone-btn" data-tone="Professional">Professional</button>
+      </div>
+
+      <div class="action-row">
+        <button class="primary" id="generateBtn">Generate Reply</button>
+        <button class="ghost" id="clearBtn">Clear</button>
+      </div>
+    </section>
+
+    <!-- ===================== RIGHT PANE: OUTPUT ===================== -->
+    <section class="pane">
+      <div class="pane-label"><span class="idx">02</span> Generated Reply</div>
+
+      <div id="outputBox" class="empty">Your generated reply will appear here.</div>
+
+      <div class="output-actions">
+        <button class="ghost" id="copyBtn" style="flex:1;">Copy Reply</button>
+        <span class="copy-feedback" id="copyFeedback">Copied to clipboard ✓</span>
+      </div>
+    </section>
+
+  </div>
+
+  <footer>Runs entirely client-side · no data leaves your browser</footer>
+</div>
+
+<script>
+/* =====================================================================
+   AI EMAIL REPLY ASSISTANT
+   Rule-based reply generator: no external AI calls, just keyword
+   matching against common email patterns + tone-specific phrasing.
+   ===================================================================== */
+
+// ---- State ----
+let selectedTone = "Formal"; // default tone
+
+// ---- Element references ----
+const emailInput   = document.getElementById('emailInput');
+const outputBox    = document.getElementById('outputBox');
+const generateBtn  = document.getElementById('generateBtn');
+const clearBtn     = document.getElementById('clearBtn');
+const copyBtn      = document.getElementById('copyBtn');
+const copyFeedback = document.getElementById('copyFeedback');
+const toneButtons  = document.querySelectorAll('.tone-btn');
+
+// ---- Tone selector wiring ----
+toneButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    toneButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedTone = btn.dataset.tone;
+  });
+});
+
+// ---- Tone-specific building blocks ----
+// Each tone has its own greeting, sign-off, and connective phrasing so the
+// same detected intent reads differently depending on the chosen tone.
+const toneStyle = {
+  Formal: {
+    greeting: "Dear Sir/Madam,",
+    opener: "Thank you for your email.",
+    closerBeforeSignoff: "Please do not hesitate to contact me should you require any further information.",
+    signoff: "Yours sincerely,\n[Your Name]"
+  },
+  Friendly: {
+    greeting: "Hi there!",
+    opener: "Thanks so much for reaching out!",
+    closerBeforeSignoff: "Let me know if you need anything else — happy to help!",
+    signoff: "Cheers,\n[Your Name]"
+  },
+  Professional: {
+    greeting: "Hello,",
+    opener: "Thank you for your message.",
+    closerBeforeSignoff: "Please let me know if you have any questions.",
+    signoff: "Best regards,\n[Your Name]"
+  }
+};
+
+/* -------------------------------------------------------------------
+   detectIntent(text)
+   Simple keyword-matching "AI" logic. Scans the lower-cased email body
+   for keyword groups and returns the first matching intent category.
+   Order matters: more specific categories are checked before generic ones.
+   ------------------------------------------------------------------- */
+function detectIntent(text) {
+  const lower = text.toLowerCase();
+
+  const rules = [
+    {
+      intent: 'meeting',
+      keywords: ['meeting', 'schedule', 'call', 'availability', 'calendar', 'appointment', 'sync up', 'catch up']
+    },
+    {
+      intent: 'complaint',
+      keywords: ['complaint', 'disappointed', 'unacceptable', 'refund', 'unhappy', 'issue with', 'not satisfied', 'poor service']
+    },
+    {
+      intent: 'invoice',
+      keywords: ['invoice', 'payment', 'billing', 'overdue', 'receipt', 'quotation', 'quote', 'price']
+    },
+    {
+      intent: 'deadline',
+      keywords: ['deadline', 'due date', 'urgent', 'asap', 'by tomorrow', 'time-sensitive', 'time sensitive']
+    },
+    {
+      intent: 'apology',
+      keywords: ['sorry', 'apologize', 'apology', 'my mistake', 'my fault']
+    },
+    {
+      intent: 'request',
+      keywords: ['could you', 'can you', 'please send', 'please provide', 'requesting', 'need your help', 'kindly']
+    },
+    {
+      intent: 'gratitude',
+      keywords: ['thank you', 'thanks', 'appreciate', 'grateful']
+    },
+    {
+      intent: 'question',
+      keywords: ['?']
+    }
+  ];
+
+  for (const rule of rules) {
+    if (rule.keywords.some(kw => lower.includes(kw))) {
+      return rule.intent;
+    }
+  }
+  return 'generic'; // fallback when no keywords match
+}
+
+/* -------------------------------------------------------------------
+   buildReplyBody(intent)
+   Returns the core middle paragraph of the reply based on detected
+   intent. This is combined with the tone's greeting/opener/signoff.
+   ------------------------------------------------------------------- */
+function buildReplyBody(intent) {
+  const bodies = {
+    meeting:
+      "I would be happy to schedule a meeting. Could you please suggest a few time slots that work for you, and I will confirm my availability accordingly?",
+    complaint:
+      "I am sorry to hear about the trouble you have experienced. I take this seriously and will look into the matter right away. I will follow up with a resolution as soon as possible.",
+    invoice:
+      "I have noted the payment/invoice details you mentioned. I will review this and get back to you shortly with confirmation or any further documentation required.",
+    deadline:
+      "I understand this is time-sensitive. I will prioritize this and aim to have an update to you as soon as possible, well ahead of the deadline if feasible.",
+    apology:
+      "Thank you for letting me know, and there is no need to worry. I appreciate your honesty, and we can move forward from here without any issue.",
+    request:
+      "I have received your request and will do my best to accommodate it. I will follow up shortly with the information or action you asked for.",
+    gratitude:
+      "I really appreciate you taking the time to write. It means a lot, and I am glad I could be of help.",
+    question:
+      "That's a great question. Let me look into the details and provide you with an accurate answer as soon as possible.",
+    generic:
+      "I have read through your message and wanted to get back to you promptly. I will review the details and follow up with next steps shortly."
+  };
+
+  return bodies[intent] || bodies.generic;
+}
+
+/* -------------------------------------------------------------------
+   generateReply()
+   Main handler: validates input, detects intent, assembles final
+   reply text using the selected tone, and renders it to the output box.
+   ------------------------------------------------------------------- */
+function generateReply() {
+  const emailText = emailInput.value.trim();
+
+  // Guard clause: empty input
+  if (emailText === '') {
+    outputBox.textContent = 'Please enter an email message to generate a reply.';
+    outputBox.classList.add('warning');
+    outputBox.classList.remove('empty');
+    return;
+  }
+
+  outputBox.classList.remove('warning', 'empty');
+
+  const intent = detectIntent(emailText);
+  const body = buildReplyBody(intent);
+  const style = toneStyle[selectedTone];
+
+  // Assemble full reply from tone-specific + intent-specific parts
+  const reply =
+    `${style.greeting}\n\n` +
+    `${style.opener} ${body}\n\n` +
+    `${style.closerBeforeSignoff}\n\n` +
+    `${style.signoff}`;
+
+  outputBox.textContent = reply;
+}
+
+/* -------------------------------------------------------------------
+   copyReply()
+   Copies the generated reply text to the clipboard and shows brief
+   inline feedback to confirm the action.
+   ------------------------------------------------------------------- */
+function copyReply() {
+  const text = outputBox.textContent;
+
+  // Nothing meaningful to copy yet
+  if (!text || outputBox.classList.contains('empty')) return;
+
+  navigator.clipboard.writeText(text).then(() => {
+    copyFeedback.classList.add('show');
+    setTimeout(() => copyFeedback.classList.remove('show'), 1800);
+  }).catch(() => {
+    // Fallback in case clipboard API is unavailable
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    copyFeedback.classList.add('show');
+    setTimeout(() => copyFeedback.classList.remove('show'), 1800);
+  });
+}
+
+/* -------------------------------------------------------------------
+   clearAll()
+   Resets input and output areas to their initial empty state.
+   ------------------------------------------------------------------- */
+function clearAll() {
+  emailInput.value = '';
+  outputBox.textContent = 'Your generated reply will appear here.';
+  outputBox.classList.add('empty');
+  outputBox.classList.remove('warning');
+  emailInput.focus();
+}
+
+// ---- Event bindings ----
+generateBtn.addEventListener('click', generateReply);
+clearBtn.addEventListener('click', clearAll);
+copyBtn.addEventListener('click', copyReply);
+
+// Allow Ctrl+Enter / Cmd+Enter inside textarea to trigger generation
+emailInput.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    generateReply();
+  }
+});
+</script>
+
+</body>
+</html>
